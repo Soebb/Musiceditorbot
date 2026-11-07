@@ -1,5 +1,7 @@
 import os
 import io
+from pathlib import Path
+
 from pyrogram import Client, filters
 from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 from pyromod import listen
@@ -11,11 +13,20 @@ BOT_TOKEN = os.environ.get("BOT_TOKEN")
 API_ID = os.environ.get("API_ID")
 API_HASH = os.environ.get("API_HASH")
 
+# Hostless keeps the application image read-only. Store Pyrogram's SQLite
+# session and temporary media in the writable /tmp directory instead.
+RUNTIME_DIR = Path("/tmp/music-editor-bot")
+SESSION_DIR = RUNTIME_DIR / "sessions"
+TEMP_DIR = RUNTIME_DIR / "temp"
+SESSION_DIR.mkdir(parents=True, exist_ok=True)
+TEMP_DIR.mkdir(parents=True, exist_ok=True)
+
 Bot = Client(
     "MusicEditorBot",
-    bot_token = BOT_TOKEN,
-    api_id = API_ID,
-    api_hash = API_HASH
+    bot_token=BOT_TOKEN,
+    api_id=API_ID,
+    api_hash=API_HASH,
+    workdir=str(SESSION_DIR),
 )
 
 START_TXT = """
@@ -42,44 +53,52 @@ async def start(bot, update):
         reply_markup=reply_markup
     )
 
-   
+
 @Bot.on_message(filters.private & filters.audio)
 async def tag(bot, m):
+    audio_path = TEMP_DIR / f"{m.audio.file_name}.mp3"
+    artwork_path = TEMP_DIR / "artwork.jpg"
+
     mes = await m.reply("`Downloading...`")
-    await m.download(f"temp/{m.audio.file_name}.mp3")
-    music = load_file(f"temp/{m.audio.file_name}.mp3")
+    await m.download(str(audio_path))
+    music = load_file(str(audio_path))
 
     try:
         artwork = music['artwork']
         image_data = artwork.value.data
         img = Image.open(io.BytesIO(image_data))
-        img.save("temp/artwork.jpg")
+        img.save(str(artwork_path))
     except ValueError:
         image_data = None
 
     await mes.delete()
-    fname = await bot.ask(m.chat.id,'`Send the Filename`', filters=filters.text)
-    title = await bot.ask(m.chat.id,'`Send the Title name`', filters=filters.text)
-    artist = await bot.ask(m.chat.id,'`Send the Artist(s) name`', filters=filters.text)
-    answer = await bot.ask(m.chat.id,'`Send the Artwork or` /skip', filters=filters.photo | filters.text)
+    fname = await bot.ask(m.chat.id, '`Send the Filename`', filters=filters.text)
+    title = await bot.ask(m.chat.id, '`Send the Title name`', filters=filters.text)
+    artist = await bot.ask(m.chat.id, '`Send the Artist(s) name`', filters=filters.text)
+    answer = await bot.ask(m.chat.id, '`Send the Artwork or` /skip', filters=filters.photo | filters.text)
     music.remove_tag('artist')
     music.remove_tag('title')
     music['artist'] = artist.text
     music['title'] = title.text
 
     if answer.photo:
-        await bot.download_media(message=answer.photo, file_name="temp/artwork.jpg")
+        await bot.download_media(message=answer.photo, file_name=str(artwork_path))
         music.remove_tag('artwork')
-        with open('temp/artwork.jpg', 'rb') as img_in:
+        with open(artwork_path, 'rb') as img_in:
             music['artwork'] = img_in.read()
     music.save()
 
     try:
-        await bot.send_audio(chat_id=m.chat.id, file_name=fname.text, performer=artist.text, title=title.text, duration=m.audio.duration, audio=f"temp/{m.audio.file_name}.mp3", thumb='temp/artwork.jpg' if answer.photo or image_data else None)
+        await bot.send_audio(
+            chat_id=m.chat.id,
+            file_name=fname.text,
+            performer=artist.text,
+            title=title.text,
+            duration=m.audio.duration,
+            audio=str(audio_path),
+            thumb=str(artwork_path) if answer.photo or image_data else None
+        )
     except Exception as e:
         print(e)
         return
-    os.remove(f"temp/{m.audio.file_name}.mp3")
-
-
-Bot.run()
+    os.remove(audio_path)
