@@ -13,7 +13,7 @@ BOT_TOKEN = os.environ.get("BOT_TOKEN")
 API_ID = os.environ.get("API_ID")
 API_HASH = os.environ.get("API_HASH")
 
-# Hostless keeps the application image read-only. Store Pyrogram's SQLite
+# Hostless keeps the application image read-only. Store Pyrofork's SQLite
 # session and temporary media in the writable /tmp directory instead.
 RUNTIME_DIR = Path("/tmp/music-editor-bot")
 SESSION_DIR = RUNTIME_DIR / "sessions"
