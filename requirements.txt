@@ -1,5 +1,7 @@
 pyrogram
 tgcrypto
-pyromod==1.4
 music_tag
 Pillow
+Flask
+waitress
+requests
